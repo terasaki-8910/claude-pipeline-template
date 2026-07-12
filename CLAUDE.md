@@ -5,6 +5,12 @@
 
 ## Workflow
 Driven by scripts/run.sh through gated stages (see pipeline.yaml). Do NOT skip gates.
+Intake proposes per-project tools (MCP/plugins/skills): Claude proposes, I approve, I
+run state/init-tools.sh myself. Never auto-install or enable tools.
+
+## Language
+Generated artifacts (code, comments, docs, commit messages, UI copy) default to English.
+Change here to override per project. The language I chat in is separate and unaffected.
 
 ## Commands
 - Tests: <e.g. npm test / pytest>
