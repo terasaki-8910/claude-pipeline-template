@@ -42,6 +42,13 @@ stage only, bounded and gated by tests -- not as an ungated overnight loop.
 5. At the end of intake, Claude PROPOSES per-project tools (MCP/plugins/skills). On your
    approval it writes `state/TOOLING.md` (the proposal) and `state/init-tools.sh` (the add
    commands). To install, review them and run `sh state/init-tools.sh` YOURSELF (never auto).
+   Intake also proposes **project-specific .gitignore entries** (so large fixtures/generated
+   files aren't swept into the build's `git add -A`).
+6. (Optional) `sh scripts/run.sh slim` -- untrack + gitignore the **pipeline machinery**
+   (`scripts/`, `prompts/`, `pipeline.yaml`, `Makefile`, `docs/ui-rules.starter.md`) in THIS
+   project, so git holds only the deliverable (the machinery stays on disk and still runs).
+   Finish with `git commit`. Refused on the template itself (which must track everything to
+   distribute via "Use this template").
 
 ## Stages (gates)
 0 intake (H, once: freeze spec + propose per-project tools -> `TOOLING.md` / `init-tools.sh`)
@@ -71,6 +78,13 @@ projects and present them (no naming repos from memory = no hallucination). Not 
 `state/BASE.md` but copies no code -- an adopted base still passes the normal criteria/
 build gates and its license is yours to satisfy (existing != trusted).
 **Requires** WebSearch enabled (`.claude/settings.json` currently denies WebFetch).
+
+## Optional command: automation recommender (after build)
+`sh scripts/run.sh recommend` -- analyzes the **finished code** and PROPOSES Hooks / MCP /
+subagents / skills (proposal-only, written to `state/RECOMMENDATIONS.md`; you decide what to
+adopt). Uses the `claude-code-setup` plugin's `automation-recommender` skill if installed,
+else a built-in equivalent. **Runs automatically at DONE** (`RECOMMEND=0` to disable). It needs
+existing code, so it lives after build, not at intake.
 
 ## Models
 Spec/criteria = Opus, design/build = Sonnet. Set per stage via env

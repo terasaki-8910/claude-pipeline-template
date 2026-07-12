@@ -39,7 +39,13 @@ Claude Code で **1 つのプロジェクト**を、ざっくりした案から�
    選ぶだけ（重い判断が先・細部は後）。合わなければ自分で指定も可。
 5. intake の最後に**プロジェクト別の道具提案**（MCP/プラグイン/スキル）が出る。承認すると
    `state/TOOLING.md`（提案書）と `state/init-tools.sh`（導入コマンド）が生成される。入れる場合は
-   中身を確認し `sh state/init-tools.sh` を**自分で**実行する（Claude は自動導入しない）。
+   中身を確認し `sh state/init-tools.sh` を**自分で**実行する（Claude は自動導入しない）。intake は
+   **プロジェクト固有の .gitignore 追加**も提案する（大きな fixture・生成物を build の `git add -A`
+   がコミットしないように）。
+6. （任意）`sh scripts/run.sh slim` — このプロジェクトの git から**パイプライン機構**（`scripts/`,
+   `prompts/`, `pipeline.yaml`, `Makefile`, `docs/ui-rules.starter.md`）を untrack + gitignore し、
+   **git に成果物だけ**を残す（機構はディスクに残り実行可）。仕上げに `git commit`。※テンプレート
+   本体では拒否される（Use this template で配布するため全追跡が必須）。
 
 ## 段階（ゲート）
 0 intake（人間・1回：仕様確定＋プロジェクト別の道具提案 → `TOOLING.md` / `init-tools.sh`）／
@@ -67,6 +73,12 @@ Claude Code で **1 つのプロジェクト**を、ざっくりした案から�
 採用」。base 採用時は `state/BASE.md` に記録するがコードは複製しない——採用しても通常の
 criteria/build ゲートを通し、ライセンスも自分で満たす（"存在するだけ"では信用しない）。
 **要件**：WebSearch の有効化が必要（現状 `.claude/settings.json` は WebFetch を deny）。
+
+## 任意コマンド：自動化提案（build 後）
+`sh scripts/run.sh recommend` — **完成したコード**を解析し、Hooks/MCP/subagent/skill を**提案**
+（実装はせず `state/RECOMMENDATIONS.md` に出力、あなたが採否を決める）。`claude-code-setup`
+プラグインがあればその `automation-recommender` スキルを使い、無ければ内蔵で代替。**DONE で自動
+実行**される（`RECOMMEND=0` で無効化）。コードが無いと意味が無いので intake ではなく完成後。
 
 ## モデル
 仕様・基準 = Opus、design・build = Sonnet。段階ごとに環境変数で指定
