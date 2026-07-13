@@ -25,6 +25,12 @@ Once decisions are settled and internally consistent, produce:
 - CLAUDE.md Commands: once the stack is chosen, fill in the test/lint commands and show
   them for my confirmation. I set the project name + one-line purpose by hand; you fill
   the stack-dependent parts -- never guess them before the stack is decided.
+- The moment the stack is decided, check docs/recipes/ for a doc matching it (e.g.
+  docs/recipes/tauri-desktop-app.md for a Tauri + pnpm desktop app). If one matches, read
+  it now and fold its known gotchas/patterns into SPEC.md/the stack decision itself,
+  rather than rediscovering them later during build. This is a one-time intake check --
+  don't re-read it every session; CLAUDE.md's "Stack recipes" line is only a fallback
+  reminder for later sessions that skipped this step.
 - .gitignore: propose PROJECT-SPECIFIC ignore rules to add on top of the base file, and
   show them for my approval before appending. The build stage commits with `git add -A`,
   so anything untracked and NOT ignored WILL be committed (and copied into every build

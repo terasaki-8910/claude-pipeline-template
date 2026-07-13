@@ -13,3 +13,10 @@
 - Colors only via design tokens. Never hardcode hex.
 - Every interactive element keyboard-reachable; meet WCAG AA contrast.
 - Responsive: verify at mobile / tablet / desktop breakpoints.
+- In a list/card of variable-height items (e.g. a row whose content can wrap to several
+  lines), per-row action controls (close/delete/export/etc.) must stay at a fixed,
+  predictable position -- never vertically centered against the row's full height, which
+  drags them far from a click a user expects near the top. Anchor them to a fixed edge
+  (e.g. `align-items: flex-start` plus their own fixed height/padding), independent of
+  how tall the row's content grows. Test against a real long-content case, not just the
+  short placeholder row a mockup usually shows.
