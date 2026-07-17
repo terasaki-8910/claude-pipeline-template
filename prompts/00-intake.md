@@ -25,6 +25,12 @@ Once decisions are settled and internally consistent, produce:
 - CLAUDE.md Commands: once the stack is chosen, fill in the test/lint commands and show
   them for my confirmation. I set the project name + one-line purpose by hand; you fill
   the stack-dependent parts -- never guess them before the stack is decided.
+- .claude/settings.json permissions: once the stack is chosen, check whether its install/
+  test/lint/build commands (e.g. `pnpm install`, `cargo test`, `poetry install`) are
+  covered by the existing allow-list. If not, propose the missing entries and show them
+  for my confirmation before adding -- headless build/repair agents cannot get an
+  unlisted command approved mid-run (no TTY to prompt) and will silently stall instead
+  of fixing the gate.
 - The moment the stack is decided, check docs/recipes/ for a doc matching it (e.g.
   docs/recipes/tauri-desktop-app.md for a Tauri + pnpm desktop app). If one matches, read
   it now and fold its known gotchas/patterns into SPEC.md/the stack decision itself,

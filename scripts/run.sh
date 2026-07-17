@@ -210,6 +210,16 @@ $(cat "$log")" ) || true
 build_feature() {  # $1=feature. Build in its worktree, gate it; on failure REPAIR (feed the
   feat=$1; wt="$STATE/worktrees/$feat"                          # error to an agent), never blind-retry.
   echo "-- build $feat --"
+  # A fresh `git worktree add` checkout has no node_modules. Install BEFORE the build
+  # agent/gate run (mirrors stage_integration_accept's root install below). Without this,
+  # a headless build/repair agent can only diagnose the missing-deps error, never fix it --
+  # installing is a network-touching command that headless (-p) mode can't get approved
+  # mid-run (no TTY to prompt), so it silently fails instead of unblocking the gate.
+  if [ -f "$wt/package.json" ] && [ ! -d "$wt/node_modules" ]; then
+    echo "-- $feat: installing dependencies (first run in this worktree) --"
+    if have pnpm; then ( cd "$wt" && pnpm install >/dev/null 2>&1 || true )
+    else ( cd "$wt" && npm install >/dev/null 2>&1 || true ); fi
+  fi
   ( cd "$wt" && claude_run "$MODEL_BUILD" "$PROMPTS/04-build.md" ) || true
   if run_and_repair "build-$feat" "$wt" "gate_feature '$feat'" "$MODEL_BUILD"; then
     echo "$feat: gates GREEN."; return 0
