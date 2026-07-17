@@ -15,3 +15,10 @@ Read SPEC.md and ACCEPTANCE.md. Produce:
 
 Tests must fail now and pass only when the feature is correct.
 List any acceptance item that CANNOT be machine-checked -> it becomes a human gate.
+
+If ACCEPTANCE.md has UI/E2E items that CAN be machine-checked (e.g. Playwright against a
+mocked/fixture DOM, axe/contrast checks) but aren't runnable via `npm test`/`npm run lint`,
+wire them into `scripts/ui-check.sh` (executable) -- `gates.sh`'s `gate_ui()` calls it if
+present, else silently no-ops. Without this, `stage_integration_accept`'s `gate_all` never
+actually exercises UI/E2E, and a broken interaction (e.g. a keyboard handler) can reach
+"final smoke test" undetected.
