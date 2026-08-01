@@ -123,10 +123,15 @@ because some Fable queries route to Opus and it has availability/safeguard cavea
 
 ## Safety (important)
 - Each feature builds in an isolated `git worktree`; that isolation is the safety boundary.
-- `.claude/settings.json` grants a SCOPED allowlist and denies push / rm -rf. Do NOT run
+- `.claude/settings.json` grants a SCOPED allowlist and denies `rm -rf` / WebFetch. Do NOT run
   `--dangerously-skip-permissions` on your main machine; if you ever do, keep it inside a
   worktree/sandbox only.
-- No push by default -- everything is local git.
+- **Push is NOT blocked by the harness** -- `Bash(git push:*)` is not in the deny list. The only
+  restraint is the instruction in `CLAUDE.md` ("do NOT push unless asked"). For a hard guard,
+  put `"Bash(git push:*)"` back in `deny` (or in the gitignored `.claude/settings.local.json`
+  if you don't want it tracked).
+- The pipeline itself never pushes -- every `run.sh` stage stays in local git (`auto`'s
+  automatic merges are local `--no-ff` merges only).
 
 ## How run.sh calls claude (portable, same for every project)
 run.sh uses the documented, stable forms -- no per-machine tweaking:

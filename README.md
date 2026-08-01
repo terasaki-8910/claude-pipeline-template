@@ -115,10 +115,15 @@ Opus に迂回し可用性・セーフガードの注意もあるため、自動
 
 ## 安全性（重要）
 - 各機能は隔離された `git worktree` でビルドする。この隔離が安全境界。
-- `.claude/settings.json` はスコープ付き許可リストを与え、push と rm -rf を deny する。
+- `.claude/settings.json` はスコープ付き許可リストを与え、`rm -rf` と WebFetch を deny する。
   本番マシンで `--dangerously-skip-permissions` を使わないこと。使う場合も worktree /
   サンドボックス内に限定する。
-- 既定では push しない — すべてローカル git。
+- **push は機械的にはブロックしていない**（deny リストに `Bash(git push:*)` は入っていない）。
+  抑止は `CLAUDE.md` の指示レベル＝「明示的に頼まれない限り push しない」だけ。ハードな
+  ガードが欲しければ deny に `"Bash(git push:*)"` を戻す（リポジトリを追跡させたくない場合は
+  gitignore 済みの `.claude/settings.local.json` に書く）。
+- パイプライン自身は push しない — `run.sh` の全ステージはローカル git で完結する
+  （`auto` の自動マージもローカル `--no-ff` のみ）。
 
 ## claude の起動（移植可能・全プロジェクト共通）
 run.sh は文書化された安定形で claude を呼ぶ。マシン依存の調整は不要:

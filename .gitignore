@@ -1,5 +1,8 @@
 state/
 *.log
+# per-machine permission overrides (e.g. re-denying git push). build does `git add -A`,
+# so without this an untracked local settings file WOULD be committed.
+.claude/settings.local.json
 .DS_Store
 node_modules/
 __pycache__/
