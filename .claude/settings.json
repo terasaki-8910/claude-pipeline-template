@@ -11,7 +11,7 @@
       "Bash(pnpm lint:*)", "Bash(pnpm exec:*)", "Bash(pnpm dlx:*)"
     ],
     "deny": [
-      "Bash(git push:*)", "Bash(rm -rf:*)", "WebFetch"
+      "Bash(rm -rf:*)", "WebFetch"
     ]
   }
 }
