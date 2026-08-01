@@ -29,6 +29,12 @@ trap 'trap - INT TERM; echo; echo "[run.sh] interrupted -- stopping." >&2; kill 
 # can correct mid-course, and /exit to continue. Default 0 = headless/unattended.
 # (build always stays headless -- it runs features in parallel worktrees.)
 : "${INTERACTIVE:=0}"
+# AUTO=1 -- UNATTENDED. Every human gate auto-approves (no y/N, no Enter), the repair
+# menu always picks 2) hybrid without asking, and a feature whose gates never go green is
+# SKIPPED (recorded in state/BLOCKED.txt) instead of stopping the run. It does NOT relax
+# permissions: PERMISSION_MODE stays as set, settings.json still denies push/rm -rf, and
+# tools are still never auto-installed. `run.sh auto` sets this for you AFTER intake.
+: "${AUTO:=0}"
 
 . "$ROOT/scripts/gates.sh"
 
@@ -74,6 +80,9 @@ notify() {  # desktop notification at input/gate points; always prints to the te
 }
 
 confirm() {  # human gate. $1=message. 0 on yes.
+  # AUTO: answer y for you and keep going. The message is still printed so the log shows
+  # exactly which judgment points were skipped.
+  if [ "$AUTO" = "1" ]; then printf '\n>>> [auto] %s -- auto-approved\n' "$1"; return 0; fi
   notify "$1"; printf 'Approve? [y/N] '
   # Read from the terminal, NOT the caller's stdin -- feature_accept calls this inside
   # `while read feat < features.txt`, so a plain `read` would eat feature lines instead
@@ -138,10 +147,21 @@ stage_design_gate() {
 stage_plan() {
   echo "== 3. plan (model=$MODEL_PLAN) =="
   agent_stage "$MODEL_PLAN" "$PROMPTS/03-plan.md"
-  notify "plan: skim PLAN.md + state/features.txt, then press Enter to continue."
-  read _ </dev/tty 2>/dev/null || read _ || true
+  if [ "$AUTO" = "1" ]; then
+    echo ">>> [auto] plan: skipping the PLAN.md / features.txt skim."
+  else
+    notify "plan: skim PLAN.md + state/features.txt, then press Enter to continue."
+    read _ </dev/tty 2>/dev/null || read _ || true
+  fi
   mark_done plan
 }
+
+record_skipped() {  # remember a feature whose gates never went green
+  printf '%s\n' "$1" >> "$STATE/skipped.txt"                       # this wave (accept reads it)
+  printf '%s\t%s\n' "$(date +%Y-%m-%dT%H:%M:%S)" "$1" >> "$STATE/BLOCKED.txt"  # whole run (summary)
+}
+
+is_skipped() { [ -f "$STATE/skipped.txt" ] && grep -qx -- "$1" "$STATE/skipped.txt"; }
 
 gate_feature() {  # $1=feature. Gate ONLY this feature if a per-feature gate exists,
   # else fall back to the whole-repo gate. A single-feature worktree does NOT contain
@@ -151,6 +171,12 @@ gate_feature() {  # $1=feature. Gate ONLY this feature if a per-feature gate exi
 }
 
 choose_repair_mode() {  # print auto|hybrid|stop on stdout. Numbered menu, default hybrid.
+  # AUTO: take the default (2 = hybrid) without prompting -- repair up to REPAIR_ITERS
+  # times, then give up on THIS feature rather than blocking on a human.
+  if [ "$AUTO" = "1" ]; then
+    echo "  A gate failed. [auto] choosing 2) hybrid (repair up to ${REPAIR_ITERS:-4}x)." >&2
+    echo hybrid; return 0
+  fi
   # Arrow-key selection is not portable/robust in POSIX sh, so this is a numbered prompt.
   {
     echo ""
@@ -224,12 +250,14 @@ build_feature() {  # $1=feature. Build in its worktree, gate it; on failure REPA
   if run_and_repair "build-$feat" "$wt" "gate_feature '$feat'" "$MODEL_BUILD"; then
     echo "$feat: gates GREEN."; return 0
   fi
+  record_skipped "$feat"
   echo "$feat: not green. See state/BLOCKED-* and state/logs." >&2; return 1
 }
 
 stage_build() {
   echo "== 4. build (parallel per feature, model=$MODEL_BUILD) =="
   [ -f "$STATE/features.txt" ] || { echo "Missing state/features.txt (run plan)."; exit 1; }
+  : > "$STATE/skipped.txt"   # per-wave ledger; feature_accept refuses to merge what's in it
   # Commit approved scaffolding (spec + criteria + plan: SPEC/ACCEPTANCE/PLAN, package.json,
   # tests, configs) to the base branch so each feature worktree inherits it. state/ is
   # gitignored, so orchestration artifacts stay out of git.
@@ -258,7 +286,14 @@ stage_build() {
       build_feature "$feat" || rc=1
     done < "$STATE/features.txt"
   fi
-  [ "$rc" -eq 0 ] || { echo "Some features failed gates; see state/BLOCKED-*.md. Resume: sh scripts/run.sh from build"; exit 1; }
+  if [ "$rc" -ne 0 ]; then
+    if [ "$AUTO" = "1" ]; then   # skip what stayed red, keep the run going
+      echo ">>> [auto] gates never went green for: $(tr '\n' ' ' < "$STATE/skipped.txt")"
+      echo ">>> [auto] those features are SKIPPED (not merged); continuing."
+    else
+      echo "Some features failed gates; see state/BLOCKED-*.md. Resume: sh scripts/run.sh from build"; exit 1
+    fi
+  fi
   mark_done build
 }
 
@@ -266,6 +301,9 @@ stage_feature_accept() {
   echo "== 5. feature acceptance + LOCAL merge (no push) =="
   while IFS= read -r feat; do
     [ -n "$feat" ] || continue
+    if is_skipped "$feat"; then   # red gates -> never merge it, auto or not
+      echo "--- feature: $feat -- SKIPPED (gates never green); NOT merged. ---"; continue
+    fi
     echo "--- feature: $feat ---"
     git -C "$ROOT" --no-pager log --oneline "$MAIN..feature/$feat" 2>/dev/null || true
     confirm "Merge feature/$feat to main? (gates green + GUI look done)" \
@@ -371,10 +409,16 @@ stage_status() {  # show which stages are done + the command to continue
     else printf '  [ ] %s\n' "$s"; [ -z "$next" ] && next="$s"; fi
   done
   echo ""
+  if [ -s "$STATE/BLOCKED.txt" ] && [ "${SUMMARY_CONTEXT:-0}" != "1" ]; then
+    echo "Skipped by an auto run (unmerged, gates red):"
+    cut -f2 "$STATE/BLOCKED.txt" | sort -u | sed 's/^/  ! /'
+    echo ""
+  fi
   if [ -z "$next" ]; then echo "All stages complete."; return 0; fi
   echo "Next: $next"
   echo "  run:           sh scripts/run.sh from $next"
   echo "  watch in TUI:  INTERACTIVE=1 sh scripts/run.sh from $next"
+  echo "  unattended:    sh scripts/run.sh auto        (no prompts after intake)"
 }
 
 stage_sessions() {  # list recorded Claude session ids (resume a headless run by id)
@@ -395,25 +439,80 @@ stage_reset() {  # clear BUILD artifacts (worktrees, feature/* branches, checkpo
     git -C "$ROOT" branch -D "$b" 2>/dev/null || true
   done
   rm -rf "$STATE/worktrees" "$STATE/done" 2>/dev/null || true
-  rm -f "$STATE"/BLOCKED-*.md 2>/dev/null || true
+  rm -f "$STATE"/BLOCKED-*.md "$STATE/skipped.txt" "$STATE/BLOCKED.txt" 2>/dev/null || true
   mkdir -p "$STATE/worktrees"
   echo "reset: worktrees + feature/* branches + checkpoints cleared. spec/criteria/plan kept."
   echo "re-run:  sh scripts/run.sh from build   (or  from plan  to redo planning)"
 }
 
 stage_waves() {  # plan -> build -> accept, looped over successive dependency waves
-  w=0
+  w=0; prev_wave=""
   while [ "$w" -lt 12 ]; do
     w=$((w + 1)); echo "== build round $w =="
     stage_plan   # re-plans: writes the NEXT wave to features.txt, or EMPTY when all built
     if ! grep -q '[^[:space:]]' "$STATE/features.txt" 2>/dev/null; then
       echo "== all planned features are built =="; return 0
     fi
+    # AUTO no-progress guard: a skipped feature stays unbuilt, so the planner can keep
+    # re-emitting the SAME wave forever. Identical wave twice = nothing is clearing; stop
+    # instead of burning quota on 12 rounds of the same failing repair loop.
+    wave=$(tr '\n' ' ' < "$STATE/features.txt")
+    if [ "$AUTO" = "1" ] && [ "$wave" = "$prev_wave" ]; then
+      echo "waves: [auto] the same wave was planned twice with nothing merged -- stopping." >&2
+      return 1
+    fi
+    prev_wave=$wave
     stage_build
     stage_feature_accept
   done
   echo "waves: safety cap (12) hit -- a wave is not clearing; check PLAN.md / features.txt." >&2
   exit 1
+}
+
+auto_summary() {  # printed on EVERY exit path of an auto run (trap), success or not
+  st=$?   # MUST stay first: the status the run is exiting with
+  echo ""
+  echo "==================== AUTO RUN SUMMARY ===================="
+  if [ -s "$STATE/BLOCKED.txt" ]; then
+    echo "Features SKIPPED -- gates never went green, NOT merged to $MAIN:"
+    sed 's/^/  - /' "$STATE/BLOCKED.txt"
+    echo ""
+    echo "  why:   state/BLOCKED-*.md  +  state/logs/gate-build-*.log"
+    echo "  retry: sh scripts/run.sh from build        (attended: you get the repair menu)"
+    [ "$st" -eq 0 ] && st=2      # finished, but not everything shipped -- don't look green
+  else
+    echo "No features were skipped."
+  fi
+  echo ""
+  SUMMARY_CONTEXT=1 stage_status  # (it would repeat the skip list above)
+  echo "exit $st  -- 0=all merged+accepted, 2=finished with skipped features, 1=stage aborted"
+  echo "========================================================="
+  trap - EXIT
+  exit "$st"
+}
+
+stage_auto() {  # UNATTENDED run: intake stays a conversation, everything after it is hands-off.
+  # Intake is the one real judgment point (the spec is yours), so it keeps its Q&A and its
+  # approval prompt. From the next stage on: no y/N, no Enter, repair menu = 2 (hybrid),
+  # green features auto-merge to $MAIN (still LOCAL -- nothing is ever pushed).
+  if [ -f "$STATE/done/intake" ]; then
+    echo "== auto: intake already done -- resuming unattended from criteria =="
+    start=criteria
+  else
+    echo "== auto: stage 0 intake is INTERACTIVE (the spec is yours to approve) =="
+    echo "         everything after it runs unattended -- walk away once intake is approved."
+    stage_intake                       # AUTO is still 0 here: real Q&A, real approval
+    start=readme
+  fi
+  AUTO=1; export AUTO
+  INTERACTIVE=0                        # every post-intake stage stays headless
+  : > "$STATE/BLOCKED.txt"             # fresh failure ledger for THIS run
+  trap 'auto_summary' EXIT             # summarize even if a stage exits early
+  echo ""
+  echo "== auto: unattended from '$start' through integration =="
+  echo "   gates auto-approved | repair=2 hybrid (${REPAIR_ITERS:-4}x) | red feature = skipped"
+  echo "   permissions unchanged ($PERMISSION_MODE); no push; no tool auto-install."
+  run_from "$start"
 }
 
 run_from() {  # run the given stage and every stage after it, in order
@@ -452,9 +551,10 @@ main() {
     recommend) stage_recommend ;;             # propose automation from the built codebase
     slim)      stage_slim ;;                  # PROJECT: untrack pipeline machinery (git = deliverable only)
     reset)     stage_reset ;;                 # clear build artifacts to recover cleanly
+    auto)      stage_auto ;;                  # UNATTENDED: intake interactive, rest no-prompts
     from)      run_from "${2:-criteria}" ;;   # resume: run this stage -> end
     all)       run_from intake ;;
-    *) echo "usage: run.sh [status|sessions|intake|readme|criteria|design|plan|build|accept|waves|integrate|recommend|slim|survey|reset|all|from <stage>]"; exit 2 ;;
+    *) echo "usage: run.sh [status|sessions|intake|readme|criteria|design|plan|build|accept|waves|integrate|recommend|slim|survey|reset|all|auto|from <stage>]"; exit 2 ;;
   esac
 }
 main "$@"

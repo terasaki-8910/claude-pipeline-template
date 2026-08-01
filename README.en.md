@@ -18,7 +18,7 @@ stage only, bounded and gated by tests -- not as an ungated overnight loop.
 - `prompts/0X-*.md` -- the "contract" for each stage.
 - `CLAUDE.md`      -- project memory (imports your global UI rules).
 - `.claude/settings.json` -- SCOPED permissions (see Safety). Not global skip-permissions.
-- `Makefile`       -- optional shortcuts (`make plan`, `make build`, ...).
+- `Makefile`       -- optional shortcuts (`make plan`, `make build`, `make auto`, ...).
 
 ## One-time GLOBAL setup (per machine, NOT in this repo)
 1. Stop the git co-author trailer everywhere:
@@ -36,6 +36,7 @@ stage only, bounded and gated by tests -- not as an ungated overnight loop.
    confirm). Output language is set in the `Language` field (default English, separate
    from the chat language). If it has a UI, run `touch state/has_ui`.
 4. Run the pipeline:  `sh scripts/run.sh all`   (or stage by stage: `... intake`, etc.)
+   To run it hands-off, use `sh scripts/run.sh auto` (see "Unattended run" below).
    Intake is GUIDED-CHOICE: start from a one-line description; Claude offers options at
    each decision and you just pick (high-impact decisions first, details later). You can
    always specify your own instead.
@@ -70,6 +71,33 @@ stage only, bounded and gated by tests -- not as an ungated overnight loop.
 - `sh scripts/run.sh reset` -- **recover from a failure**: clears build worktrees, `feature/*`
   branches and checkpoints, keeping spec/criteria/plan (SPEC/ACCEPTANCE/PLAN/tests/gates).
   Then `from build` rebuilds cleanly.
+
+## Unattended run: `sh scripts/run.sh auto` (= `make auto`)
+Intake ALONE stays a conversation (the spec is your judgment point, so its Q&A and approval
+are untouched). The moment you approve it, the run continues to integration with **zero
+further input** -- walk away.
+
+- **Every human gate auto-answers y**: criteria approval, design approval, the plan Enter-
+  prompt, each feature's merge confirmation, the final smoke test. Each one is logged as
+  `>>> [auto] ... -- auto-approved`, so the transcript shows exactly what was waved through.
+- **A failing gate always takes `2) hybrid`** without asking: feed the failure to a repair
+  agent up to `REPAIR_ITERS` times (default 4), stop on no-progress.
+- **A feature that never goes green is SKIPPED, not fatal**: it is recorded in
+  `state/BLOCKED.txt` and NOT merged. Only green features merge (`--no-ff`, LOCAL -- nothing
+  is ever pushed).
+- **AUTO RUN SUMMARY** at the end: what got skipped, where its logs are, how to resume.
+- **Exit codes**: `0` = everything merged + accepted, `2` = finished with skipped features,
+  `1` = a stage aborted.
+- **What it does NOT relax**: machine gates (tests/lint/ui) still have to pass, permissions
+  stay as configured (`PERMISSION_MODE`, the settings.json deny-list -- never
+  `--dangerously-skip-permissions`), and tools are still never auto-installed.
+- **Loop guard**: if the planner emits the same wave twice with nothing merged (a skipped
+  feature being re-proposed forever), the run stops instead of burning quota.
+- If intake is already done (`state/done/intake` exists), auto resumes from criteria.
+- Works as a prefix on any stage: `AUTO=1 sh scripts/run.sh from build`.
+
+To fix a skipped feature, go back to an attended run: `sh scripts/run.sh from build` gives
+you the repair menu again (`3) stop` opens an interactive Claude seeded with the error).
 
 ## Optional command: prior-art survey (before build)
 `sh scripts/run.sh survey` -- before building from scratch, SEARCH for similar existing
@@ -117,6 +145,9 @@ CLI changes these core flags, fix them in ONE place (`claude_interactive` / `cla
 - `REPAIR_ITERS` (default 4) / `REPAIR_HARD_CAP` (default 12) -- auto-repair attempt caps on a
   gate failure (hybrid repairs REPAIR_ITERS times then hands to you; hard cap is the ceiling).
 - `PARALLEL=1` -- build features concurrently (default sequential = safer for cost/kill).
+- `AUTO=1` -- **unattended mode** (what `run.sh auto` turns on after intake): auto-approve every
+  human gate, always pick 2) hybrid on a gate failure, skip a feature that never goes green
+  instead of stopping. Usable on a single stage: `AUTO=1 sh scripts/run.sh from criteria`.
 - `PERMISSION_MODE` (default acceptEdits) -- headless permission mode.
 - `MODEL_*` (INTAKE/CRITERIA/DESIGN/PLAN/BUILD) -- per-stage model.
 - Input notifications: human gates (approvals, the plan Enter-prompt) fire a macOS banner,

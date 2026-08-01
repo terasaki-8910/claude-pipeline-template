@@ -5,6 +5,10 @@
 
 ## Workflow
 Driven by scripts/run.sh through gated stages (see pipeline.yaml). Do NOT skip gates.
+`run.sh auto` is the ONE sanctioned exception: it runs intake as a conversation, then answers
+every later human gate itself (repair menu = hybrid, red feature = skipped, green feature =
+auto-merged locally). Machine gates still have to pass -- auto never weakens them. Do not
+invoke it on my behalf; it is mine to start.
 Intake proposes per-project tools (MCP/plugins/skills): Claude proposes, I approve, I
 run state/init-tools.sh myself. Never auto-install or enable tools.
 

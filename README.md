@@ -18,7 +18,7 @@ Claude Code で **1 つのプロジェクト**を、ざっくりした案から�
 - `prompts/0X-*.md` — 各段階の「契約」。
 - `CLAUDE.md`      — プロジェクト記憶（グローバルの UI ルールを取り込む）。
 - `.claude/settings.json` — スコープ付き権限（安全性の項参照）。素の skip-permissions は使わない。
-- `Makefile`       — 任意の短縮（`make plan`, `make build` …）。
+- `Makefile`       — 任意の短縮（`make plan`, `make build`, `make auto` …）。
 
 ## マシン全体の一度きり設定（このリポジトリ外）
 1. git の co-author 行を全プロジェクトで止める：
@@ -34,7 +34,8 @@ Claude Code で **1 つのプロジェクト**を、ざっくりした案から�
 3. `CLAUDE.md` に**プロジェクト名と一行の目的だけ**手で記入（test/lint コマンド欄は空でよい
    ——intake がスタック確定後に埋め、あなたが確認する）。生成物の言語は `Language` 欄（既定=
    英語、会話言語とは別）で指定。UI があるなら `touch state/has_ui`。
-4. パイプライン実行：`sh scripts/run.sh all`（段階ごとにも：`… intake` など）。
+4. パイプライン実行：`sh scripts/run.sh all`（段階ごとにも：`… intake` など）。**丸ごと無人で
+   回すなら `sh scripts/run.sh auto`**（下記「無人実行」）。
    intake は**案内型**：一行のざっくり指示から始め、Claude が各論点で選択肢を出し、あなたは
    選ぶだけ（重い判断が先・細部は後）。合わなければ自分で指定も可。
 5. intake の最後に**プロジェクト別の道具提案**（MCP/プラグイン/スキル）が出る。承認すると
@@ -66,6 +67,31 @@ Claude Code で **1 つのプロジェクト**を、ざっくりした案から�
 - `sh scripts/run.sh reset` — **失敗からの復旧**。build の worktree・`feature/*` ブランチ・
   チェックポイントを消し、仕様/基準/計画（SPEC・ACCEPTANCE・PLAN・tests・gates）は残す。→
   `from build` で作り直せる。
+
+## 無人実行：`sh scripts/run.sh auto`（= `make auto`）
+intake **だけ**は今まで通り対話（仕様はあなたの判断点なので Q&A と承認をそのまま残す）。
+**承認した瞬間から先は一切の入力なし**で integration まで走る。席を立ってよい。
+
+- **人間ゲートは全て自動 y**：criteria 承認 / design 承認 / plan の Enter 待ち /
+  feature ごとのマージ確認 / 最終スモークテスト確認。どのゲートを飛ばしたかは
+  `>>> [auto] … -- auto-approved` としてログに残る。
+- **ゲート失敗時は自動で `2) hybrid`**：失敗出力をエージェントに渡して最大 `REPAIR_ITERS`
+  回（既定 4）修復を試み、無進捗なら打ち切る。**あなたに聞き返さない**。
+- **直らなかった feature はスキップして続行**（＝止まらない）。その feature は
+  `state/BLOCKED.txt` に記録され、**main にマージされない**。緑になった feature だけが
+  `--no-ff` でローカルマージされる（**push は一切しない**）。
+- **最後に AUTO RUN SUMMARY** を出力：スキップされた feature、原因ログの場所、再開コマンド。
+- **終了コード**：`0` = 全部マージ＋受理／`2` = 完走したがスキップあり／`1` = 途中で停止。
+- **緩めないもの**：機械ゲート（テスト/lint/ui）は通常通り。権限も `PERMISSION_MODE`
+  （既定 acceptEdits）と settings.json の deny のまま——`--dangerously-skip-permissions` は
+  使わない。道具（MCP/plugin/skill）の自動導入もしない。
+- **無限ループ防止**：同じ wave が 2 連続で計画され何もマージされなければ停止する
+  （スキップした feature を planner が再提示し続けるケース）。
+- intake 済み（`state/done/intake` あり）なら **criteria から**無人再開する。
+- 任意のステージにも付けられる：`AUTO=1 sh scripts/run.sh from build`。
+
+失敗した feature を直すときは**有人**に戻すのが速い：`sh scripts/run.sh from build`
+（修復メニューが出るので `3) stop` で対話 Claude を開ける）。
 
 ## 任意コマンド：先行事例調査（build 前）
 `sh scripts/run.sh survey` — 一から作る前に、似た既存プロジェクトを**実検索**して提示（記憶
@@ -110,6 +136,9 @@ run.sh は文書化された安定形で claude を呼ぶ。マシン依存の�
 - `REPAIR_ITERS`（既定 4）/ `REPAIR_HARD_CAP`（既定 12）— ゲート失敗時の自動修復の試行上限
   （hybrid は REPAIR_ITERS 回で人間へ、絶対上限は HARD_CAP）。各試行は有料実行。
 - `PARALLEL=1` — build を並列化（既定は逐次＝コストと停止性で安全）。
+- `AUTO=1` — **無人モード**（`run.sh auto` が intake の後に自動で立てるフラグ）。人間ゲートを
+  全て自動承認し、修復メニューは 2) hybrid 固定、緑にならない feature はスキップして続行。
+  単体のステージにも付けられる：`AUTO=1 sh scripts/run.sh from criteria`。
 - `PERMISSION_MODE`（既定 acceptEdits）— ヘッドレスの権限モード。
 - `MODEL_*`（INTAKE/CRITERIA/DESIGN/PLAN/BUILD）— 段階別モデル。
 - 入力待ちの通知：人間ゲート（承認・plan の Enter 待ち）で macOS 通知を鳴らす。**ターミナルが
